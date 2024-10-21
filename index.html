@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ma premiere carte</title>
+  <link rel="stylesheet" href="leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css" />
+<script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
+  <script src="leaflet.js"></script>
+  <link rel="alternate"  href="ecole.geojson"  />
+    <link rel="alternate"  href="station_Tram.geojson"  />
+    <link rel="alternate"  href="ligne_Tram.geojson"  />
+
+
+
+  <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #f0f8ff;
+            color: #333;
+            margin: 0;
+            padding: 0;
+        }
+
+        h1 {
+            text-align: center;
+            font-size: 2.5em;
+            color: #1e90ff;
+            margin-top: 20px;
+            text-shadow: 2px 2px #e0e0e0;
+        }
+
+        h3 {
+            text-align: center;
+            font-size: 1.8em;
+            color: #333;
+        }
+
+        #map {
+            height: 500px;
+            width: 90%;
+            margin: 20px auto;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+        }
+
+        .legend {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+            position: absolute;
+            bottom: 30px;
+            left: 10px;
+            z-index: 1000;
+            font-size: 14px;
+        }
+
+        .legend h4 {
+            font-size: 1.2em;
+            margin-bottom: 10px;
+            color: #333;
+            font-weight: bold;
+            text-shadow: 1px 1px #f0f0f0;
+        }
+
+        .legend p {
+            margin: 5px 0;
+        }
+
+        .legend span {
+            font-size: 1.2em;
+            margin-right: 10px;
+        }
+
+        .leaflet-marker-icon {
+            animation: fadeIn 1.5s ease-in-out;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    </style>
+</head>
+<body>
+
+<h1><i class="fas fa-graduation-cap"></i> Les Grandes Écoles d'IRFANE</h1>
+<div id="map"></div>
+
+<script>
+    var map = L.map('map').setView([34.0, -6.85], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    // Color mapping for each 'nom'
+    const colorMappingEcole =  {
+    "IAV": "rgba(255, 0, 0, 0.5)",         // Red
+    "ENSIA": "rgba(0, 255, 0, 0.5)",       // Green
+    "ENA": "rgba(0, 0, 255, 0.5)",         // Blue
+    "INAU": "rgba(255, 255, 0, 0.5)",      // Yellow
+    "FACULTE1": "rgba(255, 0, 255, 0.5)",  // Magenta
+    "FACULTE2": "rgba(0, 255, 255, 0.5)",  // Cyan
+    "ENSIAS": "rgba(255, 165, 0, 0.5)",    // Orange
+    "UNIVERSITY": "rgba(128, 0, 128, 0.5)",// Purple
+    "MED_DENTAIRE": "rgba(0, 128, 0, 0.5)",// Dark Green
+    "INPT": "rgba(0, 0, 128, 0.5)",        // Navy
+    "ISIC": "rgba(128, 128, 128, 0.5)",    // Gray
+    "ESI": "rgba(255, 69, 0, 0.5)"         // Orange Red
+};
+
+    // Color mapping for tram lines
+    const colorMappingLigne = {
+        "1": "#FF4500",  // Orange Red
+        "2": "#FF0000"   // Red
+    };
+
+    // Style specific for schools
+    function styleEcole(feature) {
+        return {
+            fillColor: colorMappingEcole[feature.properties.nom] || "#FFFFFF", // Default to white if no match
+            weight: 2,
+            opacity: 1,
+            color: 'black',
+            dashArray: '3',
+            fillOpacity: 0.9  // More opaque to stand out
+        };
+    }
+
+    // Style specific for tram lines
+    function styleTramLine(feature) {
+        return {
+            color: colorMappingLigne[feature.properties.ligne] || "#FFFFFF", // Default to white if no match
+            weight: 5,  // Thickness of the line
+            opacity: 1
+        };
+    }
+
+    // Style for tram stations
+    function styleTramStation(feature) {
+        return {
+            color: '#0000FF',  // Blue for tram stations
+            radius: 6,         // Size of the circle marker
+            fillOpacity: 0.9   // More opaque to stand out
+        };
+    }
+
+    // Interaction functions for schools
+    function highlightEcole(e) {
+        var layer = e.target;
+
+        layer.setStyle({
+            weight: 5,
+            color: '#333',
+            dashArray: '',
+            fillOpacity: 0.9
+        });
+
+        layer.bringToFront();
+        info.update(layer.feature.properties);  // Update the info box
+    }
+
+    function resetHighlightEcole(e) {
+        geojsonEcole.resetStyle(e.target);
+        info.update();  // Reset the info box
+    }
+
+    function zoomToFeature(e) {
+        map.fitBounds(e.target.getBounds());
+    }
+
+    function onEachEcole(feature, layer) {
+        layer.on({
+            mouseover: highlightEcole,
+            mouseout: resetHighlightEcole,
+            click: zoomToFeature
+        });
+
+        // Add label for the school name
+        L.marker(layer.getBounds().getCenter(), {
+            icon: L.divIcon({
+                className: 'school-label',
+                html: feature.properties.nom,
+                iconSize: [100, 20]
+            })
+        }).addTo(map);
+    }
+
+    // Interaction functions for tram lines
+    function highlightTramLine(e) {
+        var layer = e.target;
+
+        layer.setStyle({
+            weight: 8,
+            color: '#666',
+            dashArray: '',
+            fillOpacity: 0.9
+        });
+
+        layer.bringToFront();
+        info.update({ligne: layer.feature.properties.ligne});  // Update the info box
+    }
+
+    function resetHighlightTramLine(e) {
+        geojsonTramLine.resetStyle(e.target);
+        info.update();  // Reset the info box
+    }
+
+    function onEachTramLine(feature, layer) {
+        layer.on({
+            mouseover: highlightTramLine,
+            mouseout: resetHighlightTramLine,
+            click: zoomToFeature
+        });
+    }
+
+    // Interaction functions for tram stations
+    function highlightTramStation(e) {
+        var layer = e.target;
+
+        layer.setStyle({
+            weight: 3,
+            color: '#666',
+            fillOpacity: 0.9
+        });
+
+        layer.bringToFront();
+        info.update({station: layer.feature.properties.nom});  // Update the info box
+    }
+
+    function resetHighlightTramStation(e) {
+        geojsonTram.resetStyle(e.target);
+        info.update();  // Reset the info box
+    }
+
+    function onEachTramStation(feature, layer) {
+        layer.on({
+            mouseover: highlightTramStation,
+            mouseout: resetHighlightTramStation,
+            click: zoomToFeature
+        });
+    }
+
+    // Adding the GeoJSON for schools
+    var geojsonEcole = fetch("ecole.geojson")
+        .then(response => response.json())
+        .then(data => {
+            geojsonEcole = L.geoJSON(data, {
+                style: styleEcole,
+                onEachFeature: onEachEcole
+            }).addTo(map);
+        });
+
+    // Adding the GeoJSON for tram stations
+    var geojsonTram = fetch("station_Tram.geojson")
+        .then(response => response.json())
+        .then(data => {
+            geojsonTram = L.geoJSON(data, {
+                pointToLayer: function(feature, latlng) {
+                    return L.circleMarker(latlng, styleTramStation(feature));  // Using circleMarker for point features
+                },
+                onEachFeature: onEachTramStation
+            }).addTo(map);
+        });
+
+    // Adding the GeoJSON for tram lines
+    var geojsonTramLine = fetch("ligne_Tram.geojson")
+        .then(response => response.json())
+        .then(data => {
+            geojsonTramLine = L.geoJSON(data, {
+                style: styleTramLine,
+                onEachFeature: onEachTramLine
+            }).addTo(map);
+        });
+
+    // Info control to display information
+    var info = L.control();
+
+    info.onAdd = function (map) {
+        this._div = L.DomUtil.create('div', 'info'); // Create a div with a class "info"
+        this.update();
+        return this._div;
+    };
+
+    // Update info control based on feature properties
+    info.update = function (props) {
+        if (props && props.nom) {
+            this._div.innerHTML = '<h4>École Information</h4>' +
+                '<b>' + props.nom + '</b>';
+        } else if (props && props.ligne) {
+            this._div.innerHTML = '<h4>Ligne de Tram Information</h4>' +
+                '<b>Ligne ' + props.ligne + '</b>';
+        } else if (props && props.station) {
+            this._div.innerHTML = '<h4>Station de Tram Information</h4>' +
+                '<b>' + props.station + '</b>';
+        } else {
+            this._div.innerHTML = 'Survolez une école, une station de tram, ou une ligne de tram';
+        }
+    };
+
+    info.addTo(map);
+
+    // Legend control for the schools
+    var legend = L.control({position: 'bottomright'});
+
+    legend.onAdd = function (map) {
+        var div = L.DomUtil.create('div', 'info legend'),
+            noms = Object.keys(colorMappingEcole);
+
+        // Loop through schools and generate a colored square for each
+        for (var i = 0; i < noms.length; i++) {
+            div.innerHTML +=
+                '<i style="background:' + colorMappingEcole[noms[i]] + '"></i> ' +
+                noms[i] + '<br>';
+        }
+
+        return div;
+    };
+
+    legend.addTo(map);
+</script>
+
+<style>
+  #map {
+      height: 600px;
+      width: 100%;
+  }
+
+  .info {
+      padding: 6px 8px;
+      font: 14px/16px Arial, Helvetica, sans-serif;
+      background: white;
+      background: rgba(255,255,255,0.8);
+      box-shadow: 0 0 15px rgba(0,0,0,0.2);
+      border-radius: 5px;
+  }
+  .info h4 {
+      margin: 0 0 5px;
+      color: #777;
+  }
+
+  .legend {
+      line-height: 18px;
+      color: #555;
+  }
+  .legend i {
+      width: 18px;
+      height: 18px;
+      float: left;
+      margin-right: 8px;
+
+      opacity: 0.7;
+  }
+</style>
+
+</body>
+
+
+
+</html>
+
+</html>
